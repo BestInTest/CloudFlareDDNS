@@ -1,13 +1,16 @@
 package main;
 
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.ArrayList;
-
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
 
 class CfConfig {
 	private String email, key, zoneId, zoneName, wanIp;
@@ -39,18 +42,18 @@ class CfConfig {
         return zoneDnsList;
     }
 
-    CfConfig(String email, String key) throws Exception {
+    CfConfig(String email, String key, String dnsRecord) throws Exception {
 		this.email = email;
 		this.key = key;
 
 		refreshZoneId();
-		refreshDnsRecords();
+		refreshDnsRecords(dnsRecord);
 	}
 
 	/**
 	 * Fetches and stores DNS records from CloudFlare.
 	 */
-	void refreshDnsRecords() throws Exception {
+	void refreshDnsRecords(String dnsRecord) throws Exception {
 		refreshWanIp();
 		HttpURLConnection connection = null;
 
@@ -60,7 +63,7 @@ class CfConfig {
 			connection = (HttpURLConnection) url.openConnection();
 			connection.setRequestMethod("GET");
 			connection.setRequestProperty("X-Auth-Email", email);
-			connection.setRequestProperty("X-Auth-Key", key);
+			connection.setRequestProperty("Authorization", "Bearer " + key);
 			connection.setRequestProperty("Content-Type", "application/json");
 
 			// Get server response
@@ -77,10 +80,15 @@ class CfConfig {
 				JSONObject tempJson = (JSONObject) result.get(i);
 				zoneDnsList.add(tempJson);
 
-				if (!tempJson.get("content").equals(wanIp)) {
-					updateZoneDns(tempJson);
-					refreshDnsRecords();
-					break;
+				if (tempJson.get("name").equals(dnsRecord)) {
+					//System.out.println(tempJson);
+					String cfIp = (String) tempJson.get("content"); // IP returned by Cloudflare API
+					if (!cfIp.equals(wanIp)) {
+						Gui.displayTrayNotification(cfIp, wanIp);
+						updateZoneDns(tempJson);
+						refreshDnsRecords(dnsRecord);
+						break;
+					}
 				}
 			}
 		} finally {
@@ -102,7 +110,7 @@ class CfConfig {
 			connection = (HttpURLConnection) url.openConnection();
 			connection.setRequestMethod("GET");
 			connection.setRequestProperty("X-Auth-Email", email);
-			connection.setRequestProperty("X-Auth-Key", key);
+			connection.setRequestProperty("Authorization", "Bearer " + key);
 			connection.setRequestProperty("Content-Type", "application/json");
 
 			// Get server response
@@ -138,7 +146,7 @@ class CfConfig {
 			connection.setRequestMethod("PUT");
 			connection.setDoOutput(true);
 			connection.setRequestProperty("X-Auth-Email", email);
-			connection.setRequestProperty("X-Auth-Key", key);
+			connection.setRequestProperty("Authorization", "Bearer " + key);
 			connection.setRequestProperty("Content-Type", "application/json");
 
 			data.replace("content", wanIp);

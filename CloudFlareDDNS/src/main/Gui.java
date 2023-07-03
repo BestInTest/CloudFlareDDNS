@@ -6,6 +6,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 
 /**
@@ -13,30 +15,53 @@ import java.util.ArrayList;
  *
  */
 public class Gui {
-    private static JFrame frame = new JFrame("CloudFlareDDNS v1.0");
+    private static JFrame frame = new JFrame("CloudFlareDDNS v2.0");
     private static boolean autoRefresh = false;
+    private static CfAutoRefreshTask autoRefreshTask;
+
+    private static boolean toTray = false;
+    private static TrayIcon trayIcon;
+
+    private static Configuration configuration;
 
     public static void main(String[] args) {
+        configuration = new Configuration("ddns-config.yml");
+        toTray = configuration.isToTray();
+
+        for (String arg : args) {
+            //force to tray
+            if (arg.equalsIgnoreCase("--to-tray")) {
+                toTray = true;
+                break;
+            }
+        }
+
         frame.setLocation(200, 200);
         frame.setVisible(true);
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 
+        addToSystemTray();
         loginGui();
+        //auto login
+        if (!configuration.getKey().equals("your_api_key")) {
+            new CfLoginTask(null, configuration.getKey()).execute();
+            loadingGui("Connecting to server...");
+        }
     }
 
-    private static void loginGui(){
+    private static void loginGui() {
         frame.getContentPane().removeAll();
         frame.setLayout(new GridBagLayout());
 
-        JLabel emailLabel = new JLabel("Email");
-        JTextField emailTf = new JTextField(30);
+        //JLabel emailLabel = new JLabel("Email");
+        //JTextField emailTf = new JTextField(30);
         JLabel keyLabel = new JLabel("Key");
         JTextField keyTf = new JTextField(30);
         JButton loginBut = new JButton("Log In");
         loginBut.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                new CfLoginTask(emailTf.getText(), keyTf.getText()).execute();
+                new CfLoginTask(null, keyTf.getText()).execute();
                 loadingGui("Connecting to server...");
             }
         });
@@ -45,11 +70,11 @@ public class Gui {
         gc.fill = GridBagConstraints.HORIZONTAL;
         gc.insets = new Insets(10, 10, 10, 10);
 
-        frame.add(emailLabel, gc);
+        //frame.add(emailLabel, gc);
 
-        gc.gridx = 1;
-        gc.gridy = 0;
-        frame.add(emailTf, gc);
+        //gc.gridx = 1;
+        //gc.gridy = 0;
+        //frame.add(emailTf, gc);
 
         gc.gridx = 0;
         gc.gridy = 1;
@@ -79,13 +104,22 @@ public class Gui {
         frame.repaint();
     }
 
-    private static void showMessageBox(String message){
+    private static void showMessageBox(String message) {
         JOptionPane.showMessageDialog(null, message);
     }
 
-    private static void serverSelectGui(CfConfig config){
+    private static void serverSelectGui(CfConfig config) {
         frame.getContentPane().removeAll();
         frame.setLayout(new BorderLayout());
+        // frame.setResizable(false); ???
+
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowIconified(WindowEvent evt) {
+                frame.setVisible(false);
+            }
+        });
+
         String ar;
         if (autoRefresh) {
             ar = "ON";
@@ -111,6 +145,7 @@ public class Gui {
         JTable table = new JTable(data, colNames);
         JScrollPane sp = new JScrollPane(table);
         table.setFillsViewportHeight(true);
+        table.setEnabled(false); // disable edit
         frame.add(sp, BorderLayout.CENTER);
 
 
@@ -138,28 +173,50 @@ public class Gui {
         frame.add(buttonPanel, BorderLayout.PAGE_END);
 
         frame.pack();
+
+        if (toTray) {
+            frame.setVisible(false);
+        }
     }
 
-    private static void autoRefreshGui(CfConfig config){
+    private static void autoRefreshGui(CfConfig config) {
         frame.getContentPane().removeAll();
         frame.setLayout(new GridBagLayout());
 
         JLabel timeLabel = new JLabel("Minutes between updates: ");
+
+        SpinnerNumberModel spinnerModel = new SpinnerNumberModel(configuration.getInterval(), 1, 1440, 1);
+        // Tworzenie komponentu JSpinner z modelem
+        JSpinner spinner = new JSpinner(spinnerModel);
+
+        //TODO: Zmienić numberCombo na pole tekstowe i żeby była ładowana wartość z configu
         JComboBox<Integer> numberCombo = new JComboBox<>(new Integer[] {5, 15, 30, 60, 720, 1440});
+
         JLabel autoRefreshLabel = new JLabel("Toggle auto refresh on/off:");
         JCheckBox arCheckBox = new JCheckBox();
+        arCheckBox.setSelected(configuration.isAutoRefresh());
 
         JButton okBut = new JButton("OK");
         okBut.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (arCheckBox.isSelected()) {
-                    int mins = (int) numberCombo.getSelectedItem();
+                    if (autoRefreshTask != null) {
+                        System.out.println("Cancelling previous task");
+                        autoRefreshTask.cancel(true);
+                    }
+                    int mins = (int) spinner.getValue();
                     autoRefresh = true;
-                    new CfAutoRefreshTask(config, mins).execute();
+                    autoRefreshTask = new CfAutoRefreshTask(config, mins);
+                    autoRefreshTask.execute();
                 } else{
                     autoRefresh = false;
                 }
+                //Save changes
+                configuration.setInterval((int) spinner.getValue()); // Save interval
+                configuration.setAutoRefresh(arCheckBox.isSelected()); // Save whether auto-refresh is enabled
+                configuration.saveChanges(); // Save changes to config file
+
                 serverSelectGui(config);
             }
         });
@@ -179,7 +236,7 @@ public class Gui {
 
         gc.gridx = 1;
         gc.gridy = 0;
-        frame.add(numberCombo, gc);
+        frame.add(spinner, gc);
 
         gc.gridx = 0;
         gc.gridy = 1;
@@ -201,17 +258,17 @@ public class Gui {
         frame.repaint();
     }
 
-    private static class CfRefreshTask extends SwingWorker<Void, Void>{
+    private static class CfRefreshTask extends SwingWorker<Void, Void> {
         CfConfig config;
 
-        CfRefreshTask(CfConfig config){
+        CfRefreshTask(CfConfig config) {
             this.config = config;
         }
 
         @Override
         public Void doInBackground() {
             try {
-                config.refreshDnsRecords();
+                config.refreshDnsRecords(configuration.getRecord());
                 showMessageBox("Refreshed records");
             } catch (Exception e) {
                 showMessageBox("Failed to refresh records. Please check internet connectivity");
@@ -220,25 +277,27 @@ public class Gui {
         }
 
         @Override
-        public void done(){
+        public void done() {
             serverSelectGui(config);
         }
     }
 
-    private static class CfAutoRefreshTask extends SwingWorker<Void, Void>{
+    private static class CfAutoRefreshTask extends SwingWorker<Void, Void> {
         CfConfig config;
         int mins;
 
-        CfAutoRefreshTask(CfConfig config, int mins){
+        public CfAutoRefreshTask(CfConfig config, int mins) {
             this.config = config;
             this.mins = mins;
         }
 
         @Override
         protected Void doInBackground() throws Exception {
-            while (autoRefresh){
+            while (autoRefresh) {
                 Thread.sleep(mins * 60000);
-                config.refreshDnsRecords();
+                loadingGui("Refreshing DNS records...");
+                config.refreshDnsRecords(configuration.getRecord());
+                serverSelectGui(config);
             }
             return null;
         }
@@ -257,9 +316,10 @@ public class Gui {
         @Override
         public Void doInBackground() {
             try {
-                config = new CfConfig(email, key);
+                config = new CfConfig(email, key, configuration.getRecord());
                 success = true;
             } catch (Exception e) {
+                e.printStackTrace();
                 showMessageBox("Invalid email or key");
             }
             return null;
@@ -275,4 +335,55 @@ public class Gui {
         }
 
     }
+
+    private static void addToSystemTray() {
+        if (SystemTray.isSupported()) {
+            SystemTray tray = SystemTray.getSystemTray();
+            //Alternative (if the icon is on the classpath):
+            //Image image = Toolkit.getDefaultToolkit().createImage(getClass().getResource("icon.png"));
+            Image image = Toolkit.getDefaultToolkit().getImage("icon.png");
+
+            // Dodawanie ikony do System Tray
+            trayIcon = new TrayIcon(image, "CloudFlare DDNS");
+            trayIcon.setImageAutoSize(true);
+
+            // Dodawanie menu do ikony
+            PopupMenu popupMenu = new PopupMenu();
+            MenuItem showItem = new MenuItem("Show");
+            showItem.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    frame.setVisible(true);
+                    //pokazywanie okienka "na wierzchu"
+                    if (!toTray) {
+                        frame.setState(Frame.ICONIFIED);
+                        frame.setState(Frame.NORMAL);
+                    }
+                }
+            });
+
+            MenuItem exitItem = new MenuItem("Close");
+            exitItem.addActionListener(new ActionListener() {
+                public void actionPerformed(ActionEvent e) {
+                    System.exit(0);
+                }
+            });
+            popupMenu.add(showItem);
+            popupMenu.add(exitItem);
+            trayIcon.setPopupMenu(popupMenu);
+
+            try {
+                tray.add(trayIcon);
+            } catch (AWTException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    static void displayTrayNotification(String oldIp, String newIp) {
+        if (SystemTray.isSupported() && trayIcon != null) {
+            trayIcon.displayMessage("IP changed", "Updated DNS record to new IP \n" + oldIp + " -> " + newIp, TrayIcon.MessageType.INFO);
+        }
+    }
+
 }
