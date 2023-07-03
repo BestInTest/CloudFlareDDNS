@@ -1,4 +1,4 @@
-package main;
+package com.github.cloudflareddns;
 
 import org.json.simple.JSONObject;
 

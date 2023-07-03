@@ -1,4 +1,4 @@
-package main;
+package com.github.cloudflareddns;
 
 import org.bspfsystems.yamlconfiguration.configuration.InvalidConfigurationException;
 import org.bspfsystems.yamlconfiguration.file.YamlConfiguration;
