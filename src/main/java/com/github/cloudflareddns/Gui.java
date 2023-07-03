@@ -55,7 +55,7 @@ public class Gui {
 
         //JLabel emailLabel = new JLabel("Email");
         //JTextField emailTf = new JTextField(30);
-        JLabel keyLabel = new JLabel("Key");
+        JLabel keyLabel = new JLabel("Api key");
         JTextField keyTf = new JTextField(30);
         JButton loginBut = new JButton("Log In");
         loginBut.addActionListener(new ActionListener() {
