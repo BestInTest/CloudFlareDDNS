@@ -120,6 +120,9 @@ public class Gui {
             }
         });
 
+        //Schedule refresh task if enabled
+        scheduleAutoRefreshTask(config, configuration.getInterval());
+
         String ar;
         if (autoRefresh) {
             ar = "ON";
@@ -177,9 +180,6 @@ public class Gui {
         if (toTray) {
             frame.setVisible(false);
         }
-
-        //Schedule refresh task if enabled
-        scheduleAutoRefreshTask(config, configuration.getInterval());
     }
 
     private static void autoRefreshGui(CfConfig config) {
