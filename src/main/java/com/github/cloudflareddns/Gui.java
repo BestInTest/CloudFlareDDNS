@@ -179,6 +179,10 @@ public class Gui {
 
         frame.pack();
 
+        if (configuration.getRecord().equals("your.domain-record.net")) {
+            showMessageBox("Please configure your domain record in ddns-config.yml");
+        }
+
         if (toTray) {
             frame.setVisible(false);
         }
