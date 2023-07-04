@@ -16,6 +16,7 @@ import java.util.ArrayList;
  */
 public class Gui {
     private static JFrame frame = new JFrame("CloudFlareDDNS v2.0");
+    private static final Image icon = Toolkit.getDefaultToolkit().getImage(Gui.class.getClassLoader().getResource("icon.png"));
     private static boolean autoRefresh = false;
     private static CfAutoRefreshTask autoRefreshTask;
 
@@ -39,6 +40,7 @@ public class Gui {
         frame.setLocation(200, 200);
         frame.setVisible(true);
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        frame.setIconImage(icon);
 
         addToSystemTray();
         loginGui();
@@ -343,12 +345,9 @@ public class Gui {
     private static void addToSystemTray() {
         if (SystemTray.isSupported()) {
             SystemTray tray = SystemTray.getSystemTray();
-            //Alternative (if the icon is on the classpath):
-            //Image image = Toolkit.getDefaultToolkit().createImage(getClass().getResource("icon.png"));
-            Image image = Toolkit.getDefaultToolkit().getImage("icon.png");
 
             // Dodawanie ikony do System Tray
-            trayIcon = new TrayIcon(image, "CloudFlare DDNS");
+            trayIcon = new TrayIcon(icon, "CloudFlare DDNS");
             trayIcon.setImageAutoSize(true);
 
             // Dodawanie menu do ikony
