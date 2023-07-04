@@ -177,6 +177,9 @@ public class Gui {
         if (toTray) {
             frame.setVisible(false);
         }
+
+        //Schedule refresh task if enabled
+        scheduleAutoRefreshTask(config, configuration.getInterval());
     }
 
     private static void autoRefreshGui(CfConfig config) {
@@ -186,11 +189,7 @@ public class Gui {
         JLabel timeLabel = new JLabel("Minutes between updates: ");
 
         SpinnerNumberModel spinnerModel = new SpinnerNumberModel(configuration.getInterval(), 1, 1440, 1);
-        // Tworzenie komponentu JSpinner z modelem
         JSpinner spinner = new JSpinner(spinnerModel);
-
-        //TODO: Zmienić numberCombo na pole tekstowe i żeby była ładowana wartość z configu
-        JComboBox<Integer> numberCombo = new JComboBox<>(new Integer[] {5, 15, 30, 60, 720, 1440});
 
         JLabel autoRefreshLabel = new JLabel("Toggle auto refresh on/off:");
         JCheckBox arCheckBox = new JCheckBox();
@@ -200,18 +199,8 @@ public class Gui {
         okBut.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (arCheckBox.isSelected()) {
-                    if (autoRefreshTask != null) {
-                        System.out.println("Cancelling previous task");
-                        autoRefreshTask.cancel(true);
-                    }
-                    int mins = (int) spinner.getValue();
-                    autoRefresh = true;
-                    autoRefreshTask = new CfAutoRefreshTask(config, mins);
-                    autoRefreshTask.execute();
-                } else{
-                    autoRefresh = false;
-                }
+                autoRefresh = arCheckBox.isSelected();
+
                 //Save changes
                 configuration.setInterval((int) spinner.getValue()); // Save interval
                 configuration.setAutoRefresh(arCheckBox.isSelected()); // Save whether auto-refresh is enabled
@@ -256,6 +245,21 @@ public class Gui {
 
         frame.revalidate();
         frame.repaint();
+    }
+
+    private static void scheduleAutoRefreshTask(CfConfig config, int mins) {
+        //FIXME: Clicking 'cancel' in GUI reschedules task like 'OK' button
+        if (autoRefreshTask != null) {
+            System.out.println("Cancelling previous task");
+            autoRefreshTask.cancel(true);
+            autoRefreshTask = null;
+        }
+
+        if (configuration.isAutoRefresh()) {
+            autoRefresh = true;
+            autoRefreshTask = new CfAutoRefreshTask(config, mins);
+            autoRefreshTask.execute();
+        }
     }
 
     private static class CfRefreshTask extends SwingWorker<Void, Void> {
